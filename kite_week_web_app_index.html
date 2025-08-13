@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kite Week – Lake Michigan</title>
+  <!-- iOS add-to-home support (works even without manifest) -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Kite Week">
+  <style>
+    /* Minimal, mobile-first styling */
+    :root {
+      --bg: #0b1220;
+      --card: #111a2b;
+      --muted: #7387a2;
+      --text: #e6edf6;
+      --accent: #3fb7ff;
+      --good: #21c55d;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --chip: #1b2540;
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0; background: radial-gradient(1200px 800px at 70% -10%, #1a2742, var(--bg));
+      color: var(--text); font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 20px; }
+    header { display:flex; align-items:center; gap:12px; }
+    .logo { width:40px; height:40px; border-radius:10px; background: linear-gradient(135deg,#48c6ef,#6f86d6); display:grid; place-items:center; font-weight:800; }
+    h1 { font-size: 22px; margin: 0; }
+    .card { background: var(--card); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; padding: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .controls { display:grid; gap: 10px; grid-template-columns: 1fr; margin: 14px 0; }
+    .controls .group { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .controls label { color: var(--muted); font-weight:600; }
+    input[type="number"] { width:90px; padding:8px 10px; border-radius:10px; border:1px solid #22304b; background:#0e1627; color:var(--text); }
+    button { appearance:none; border:0; background:linear-gradient(135deg,#34d399,#10b981); color:#052012; padding:10px 14px; border-radius:12px; font-weight:700; cursor:pointer; box-shadow: 0 6px 18px rgba(16,185,129,.35); }
+    button.secondary{ background:linear-gradient(135deg,#60a5fa,#3b82f6); color:#031225; box-shadow: 0 6px 18px rgba(59,130,246,.35); }
+    .chips { display:flex; gap:6px; flex-wrap:wrap; }
+    .chip { background: var(--chip); border:1px solid #273559; padding:6px 10px; border-radius:999px; font-size:13px; display:flex; align-items:center; gap:6px; }
+    .chip input { accent-color: var(--accent); }
+
+    table { width:100%; border-collapse: collapse; margin-top: 8px; }
+    thead th { text-align:left; color: var(--muted); font-weight:600; padding: 10px 8px; border-bottom:1px solid #22304b; }
+    tbody td { padding: 12px 8px; border-bottom:1px solid #17223a; vertical-align: top; }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
+    .score { font-weight:800; }
+    .score.good { color: var(--good); }
+    .score.ok { color: var(--warn); }
+    .score.bad { color: var(--bad); }
+    .muted { color: var(--muted); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .foot { color: var(--muted); font-size: 13px; margin-top: 10px; }
+    .grid { display:grid; gap:10px; }
+
+    @media(min-width: 720px){ .controls{ grid-template-columns: 1fr auto; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo">🪁</div>
+      <div>
+        <h1>Kite Week — Lake Michigan</h1>
+        <div class="muted">8am–8pm • America/Chicago • Open‑Meteo</div>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="grid">
+        <div class="controls">
+          <div class="group">
+            <label for="kg">Rider weight</label>
+            <input id="kg" type="number" value="80" min="40" max="130" step="1"> <span class="muted">kg</span>
+            <button id="run">Get forecast</button>
+            <button id="share" class="secondary" title="Share a link with your current settings">Share</button>
+          </div>
+          <div class="group">
+            <label>Spots</label>
+            <div class="chips" id="spots"></div>
+          </div>
+        </div>
+        <div id="status" class="muted">Ready.</div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:12px;">
+      <table id="results">
+        <thead>
+          <tr>
+            <th style="width:110px;">Day</th>
+            <th>Top spot</th>
+            <th style="width:115px;">Best window</th>
+            <th style="width:150px;">Wind @ best</th>
+            <th style="width:135px;">Kite</th>
+            <th style="width:90px;">Score</th>
+            <th>Runner‑up</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="7" class="muted">Run to see the week…</td></tr>
+        </tbody>
+      </table>
+      <div class="foot">Tip: Long‑press to copy any row. Always check real conditions (temps, storms, access rules) before you go.</div>
+    </section>
+  </div>
+
+  <script>
+  // -----------------------------
+  // Spots
+  // -----------------------------
+  const COMPASS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+  const TIMEZONE = 'America/Chicago';
+  const LOCAL_HOURS = Array.from({length:13}, (_,i)=>i+8); // 8..20
+  const FORECAST_DAYS = 7;
+  const SCORE_GOOD_THRESHOLD = 60;
+
+  const SPOTS = {
+    'Montrose Beach, Chicago IL': { lat:41.9667, lon:-87.6350, good:new Set(['N','NNE','NE','ENE','E','ESE','SE']), offshore:new Set(['W','WNW','WSW','SW']) },
+    'Waukegan Municipal Beach, IL': { lat:42.363, lon:-87.810, good:new Set(['N','NNE','NE','ENE','E','ESE','SE']), offshore:new Set(['W','WNW','WSW','SW']) },
+    'Sheboygan South Beach, WI': { lat:43.736, lon:-87.703, good:new Set(['N','NNE','NE','ENE','E','ESE','SE']), offshore:new Set(['W','WNW','WSW','SW']) },
+    'Indiana Dunes State Park, IN': { lat:41.655, lon:-87.042, good:new Set(['N','NNE','NE','ENE','E','ESE','SE']), offshore:new Set(['W','WNW','WSW','SW']) },
+    'Michigan City (Washington Park), IN': { lat:41.720, lon:-86.903, good:new Set(['N','NNE','NE','ENE','E']), offshore:new Set(['S','SSE','SSW']) },
+    'St. Joseph (Silver Beach), MI': { lat:42.107, lon:-86.485, good:new Set(['W','WNW','WSW','NW','SW']), offshore:new Set(['E','ENE','ESE','NE','SE']) },
+    'Wolf Lake (Hammond), IN': { lat:41.679, lon:-87.517, good:new Set(COMPASS_16), offshore:new Set() },
+  };
+
+  // Build spots UI
+  const spotsEl = document.getElementById('spots');
+  const spotKeys = Object.keys(SPOTS);
+  const selected = new Set(spotKeys); // default: all
+  spotKeys.forEach(name => {
+    const id = 'spot-' + name.replace(/[^a-z0-9]/gi,'');
+    const wrap = document.createElement('label');
+    wrap.className = 'chip';
+    wrap.innerHTML = `<input type="checkbox" id="${id}" checked> ${name}`;
+    spotsEl.appendChild(wrap);
+    wrap.querySelector('input').addEventListener('change', e => {
+      if(e.target.checked) selected.add(name); else selected.delete(name);
+    });
+  });
+
+  // -----------------------------
+  // Helpers
+  // -----------------------------
+  const degToCompass16 = deg => COMPASS_16[Math.round((deg % 360) / 22.5) % 16];
+
+  function kiteSizeRecommendationKnots(kn, riderKg=80){
+    let base;
+    if (kn < 12) base = 'Foil/Lightwind (15–17m)';
+    else if (kn < 16) base = '14–15m';
+    else if (kn < 19) base = '12–13m';
+    else if (kn < 23) base = '10–11m';
+    else if (kn < 27) base = '8–9m';
+    else if (kn < 31) base = '6–7m';
+    else base = '5–6m (expert)';
+    const delta = Math.round((riderKg - 80) / 10);
+    const m = base.match(/(\d+)(?:[–-](\d+))?m/);
+    if(!m) return base;
+    const a = Math.max(3, parseInt(m[1]) + delta);
+    const b = m[2] ? Math.max(4, parseInt(m[2]) + delta) : null;
+    return b ? `${a}–${b}m` : `${a}m`;
+  }
+
+  function scoreHour(kn, gustKn, compass, precip, good, offshore){
+    let base = 0;
+    if (kn >= 12 && kn <= 35){
+      if (kn <= 22) base = (kn - 12) / (22 - 12) * 60;
+      else base = Math.max(0, (30 - kn) / (30 - 22) * 60);
+    }
+    if (good.has(compass)) base += 30; else if (offshore.has(compass)) base -= 40; else base += 10;
+    const gustPen = Math.max(0, (gustKn - kn) * 2);
+    base -= Math.min(20, gustPen);
+    if (precip >= 80) base -= 40; else if (precip >= 50) base -= 20;
+    return Math.max(0, Math.min(100, base));
+  }
+
+  function contiguousWindows(hoursWithScores, threshold){
+    const out = []; let start=null, last=null;
+    for (const [t, s] of hoursWithScores){
+      if (s >= threshold){ if (start===null) start=t; last=t; }
+      else { if (start!==null){ out.push([start, new Date(last.getTime()+3600*1000)]); start=null; last=null; } }
+    }
+    if (start!==null) out.push([start, new Date(last.getTime()+3600*1000)]);
+    return out;
+  }
+
+  function fmtTimeWindow(win){
+    if(!win) return '—';
+    const [a,b] = win;
+    const fmt = d => d.toLocaleTimeString([], {hour:'numeric'}).toLowerCase();
+    return `${fmt(a)}–${fmt(b)}`;
+  }
+
+  function classifyScore(x){ return x>=75 ? 'good' : x>=55 ? 'ok' : 'bad'; }
+
+  // -----------------------------
+  // Fetch + analyze
+  // -----------------------------
+  async function fetchHourly(lat, lon){
+    const params = new URLSearchParams({
+      latitude: lat, longitude: lon,
+      hourly: 'wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation_probability',
+      windspeed_unit: 'kn', forecast_days: String(FORECAST_DAYS), timezone: TIMEZONE
+    });
+    const url = `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
+  function parseIsoHour(s){ return new Date(s); } // already in TZ we asked
+
+  function summarizeDay(rows, riderKg){
+    if (!rows.length) return null;
+    const best = rows.reduce((a,b)=> a.score>=b.score? a:b);
+    const sorted = rows.map(r=>[r.time, r.score]).sort((a,b)=>a[0]-b[0]);
+    const windows = contiguousWindows(sorted, SCORE_GOOD_THRESHOLD);
+    let window = null;
+    if (windows.length){ window = windows.reduce((a,b)=> (b[1]-b[0])>(a[1]-a[0])? b:a); }
+    let medianKn = best.windKn;
+    if (window){
+      const inWin = rows.filter(r=> r.time>=window[0] && r.time<window[1]);
+      if (inWin.length){ medianKn = inWin.map(r=>r.windKn).sort((a,b)=>a-b)[Math.floor(inWin.length/2)]; }
+    }
+    return { best, window, kite: kiteSizeRecommendationKnots(medianKn, riderKg) };
+  }
+
+  async function analyzeSpot(name, meta, riderKg){
+    const data = await fetchHourly(meta.lat, meta.lon);
+    const h = data.hourly;
+    const days = {};
+    for (let i=0;i<h.time.length;i++){
+      const ts = parseIsoHour(h.time[i]);
+      if (!LOCAL_HOURS.includes(ts.getHours())) continue;
+      const ws = h.wind_speed_10m[i];
+      const wg = h.wind_gusts_10m[i];
+      const wd = h.wind_direction_10m[i];
+      const pp = (h.precipitation_probability && h.precipitation_probability[i]) || 0;
+      const dir = degToCompass16(wd);
+      const score = scoreHour(ws, wg, dir, pp, meta.good, meta.offshore);
+      const row = { time: ts, windKn: ws, gustKn: wg, dir, pp, score, spot: name };
+      const key = ts.toISOString().slice(0,10);
+      (days[key] ||= []).push(row);
+    }
+    const summaries = {};
+    for (const day in days){ summaries[day] = summarizeDay(days[day], riderKg); }
+    return summaries;
+  }
+
+  function pickDailyWinners(all){
+    const allDays = new Set();
+    for (const spot in all){ for (const d in all[spot]) allDays.add(d); }
+    const winners = {};
+    [...allDays].sort().forEach(day => {
+      const ranked = [];
+      for (const spot in all){ const s = all[spot][day]; if (s){ ranked.push([s.best.score, spot, s]); } }
+      ranked.sort((a,b)=>b[0]-a[0]);
+      if (ranked.length){ winners[day] = { top: ranked[0], runner: ranked[1] || null }; }
+    });
+    return winners;
+  }
+
+  // -----------------------------
+  // UI glue
+  // -----------------------------
+  const statusEl = document.getElementById('status');
+  const resultsBody = document.querySelector('#results tbody');
+  const kgEl = document.getElementById('kg');
+
+  function setStatus(t){ statusEl.textContent = t; }
+
+  function renderWinners(winners){
+    resultsBody.innerHTML = '';
+    const days = Object.keys(winners).sort();
+    if (!days.length){ resultsBody.innerHTML = '<tr><td colspan="7" class="muted">No results.</td></tr>'; return; }
+    for (const day of days){
+      const { top, runner } = winners[day];
+      const [score, topName, topSum] = top;
+      const b = topSum.best;
+      const scoreCls = 'score ' + classifyScore(Math.round(score));
+      const row = document.createElement('tr');
+      const d = new Date(day + 'T12:00:00');
+      const dayStr = d.toLocaleDateString([], { weekday:'short', month:'short', day:'numeric' });
+      row.innerHTML = `
+        <td class="mono">${dayStr}</td>
+        <td><strong>${topName}</strong><div class="muted">${b.dir}</div></td>
+        <td>${fmtTimeWindow(topSum.window)}</td>
+        <td>${Math.round(b.windKn)}kts <span class="muted">(gust ${Math.round(b.gustKn)}kts)</span></td>
+        <td>${topSum.kite}</td>
+        <td class="${scoreCls}">${Math.round(score)}</td>
+        <td>${runner ? `<span class="mono">${runner[1]}</span> <span class="muted">${Math.round(runner[2].best.windKn)}kts ${runner[2].best.dir} • ${Math.round(runner[0])}</span>` : '<span class="muted">—</span>'}</td>
+      `;
+      resultsBody.appendChild(row);
+    }
+  }
+
+  async function run(){
+    const riderKg = parseInt(kgEl.value) || 80;
+    const spotsToUse = [...selected];
+    setStatus('Fetching forecasts…');
+    try{
+      const all = {};
+      // Fetch in parallel with small concurrency to be gentle
+      const tasks = spotsToUse.map(name => analyzeSpot(name, SPOTS[name], riderKg).then(s => { all[name]=s; }));
+      await Promise.all(tasks);
+      const winners = pickDailyWinners(all);
+      renderWinners(winners);
+      setStatus(`Done. ${spotsToUse.length} spot(s) • rider ~${riderKg}kg`);
+      // persist state to URL for easy sharing
+      const u = new URL(location);
+      u.searchParams.set('kg', String(riderKg));
+      u.searchParams.set('spots', spotsToUse.map(s=>spotKeys.indexOf(s)).join(','));
+      history.replaceState(null, '', u);
+    }catch(err){
+      console.error(err);
+      setStatus('Error: ' + (err && err.message ? err.message : err));
+      resultsBody.innerHTML = '<tr><td colspan="7" class="muted">Fetch failed. Try again.</td></tr>';
+    }
+  }
+
+  // Share button copies URL with current settings
+  document.getElementById('share').addEventListener('click', async () => {
+    try{
+      await navigator.clipboard.writeText(location.href);
+      setStatus('Link copied to clipboard!');
+    }catch{
+      setStatus('Copy failed — you can still share this page URL.');
+    }
+  });
+
+  document.getElementById('run').addEventListener('click', run);
+
+  // restore state from URL if present
+  (function initFromURL(){
+    const u = new URL(location);
+    const kg = parseInt(u.searchParams.get('kg')); if(!isNaN(kg)){ kgEl.value = kg; }
+    const s = u.searchParams.get('spots');
+    if (s){
+      selected.clear();
+      s.split(',').map(x=>parseInt(x)).filter(i=>!isNaN(i)).forEach(i=> { const name = spotKeys[i]; if(name){ selected.add(name); document.querySelectorAll('#spots input')[i].checked = true; } });
+    }
+  })();
+
+  // Auto-run once on load
+  run();
+  </script>
+</body>
+</html>
